@@ -6,6 +6,21 @@
 # http://www.rivescript.com/
 "use strict"
 
+##
+# Notice to Developers
+#
+# The methods prefixed with the word "private" *should not be used* by you. They
+# are documented here to help the RiveScript library developers understand the
+# code; they are not considered 'stable' API functions and they may change or
+# be removed at any time, for any reason, and with no advance notice.
+#
+# The most commonly used private function I've seen developers use is the
+# `parse()` function, when they want to load RiveScript code from a string
+# instead of a file. **Do not use this function.** The public API equivalent
+# function is `stream()`. The parse function will probably be removed in the
+# near future.
+##
+
 # Constants
 VERSION  = "1.17.2"
 
@@ -25,6 +40,7 @@ readDir = require("fs-readdir-recursive")
 # Create a new RiveScript interpreter. `options` is an object with the
 # following keys:
 #
+# ```
 # * bool debug:     Debug mode               (default false)
 # * int  depth:     Recursion depth limit    (default 50)
 # * bool strict:    Strict mode              (default true)
@@ -32,6 +48,11 @@ readDir = require("fs-readdir-recursive")
 # * bool forceCase: Force-lowercase triggers (default false, see below)
 # * func onDebug:   Set a custom handler to catch debug log messages (default null)
 # * obj  errors:    Customize certain error messages (see below)
+# * str  concat:    Globally replace the default concatenation mode when parsing
+#                   RiveScript source files (default `null`. be careful when
+#                   setting this option if using somebody else's RiveScript
+#                   personality; see below)
+# ```
 #
 # ## UTF-8 Mode
 #
@@ -63,6 +84,31 @@ readDir = require("fs-readdir-recursive")
 # in triggers, see [case folding in Unicode](https://www.w3.org/International/wiki/Case_folding).
 # If you need to support Unicode symbols in triggers this may cause problems with
 # certain symbols when made lowercase.
+#
+# ## Global Concat Mode
+#
+# The concat (short for concatenation) mode controls how RiveScript joins two
+# lines of code together when a `^Continue` command is used in a source file.
+# By default, RiveScript simply joins them together with no symbols inserted in
+# between ("none"); the other options are "newline" which joins them with line
+# breaks, or "space" which joins them with a single space character.
+#
+# RiveScript source files can define a *local, file-scoped* setting for this
+# by using e.g. `! local concat = newline`, which affects how the continuations
+# are joined in the lines that follow.
+#
+# Be careful when changing the global concat setting if you're using a RiveScript
+# personality written by somebody else; if they were relying on the default
+# concat behavior (didn't specify a `! local concat` option), then changing the
+# global default will potentially cause formatting issues or trigger matching
+# issues when using that personality.
+#
+# I strongly recommend that you **do not** use this option if you intend to ever
+# share your RiveScript personality with others; instead, explicitly spell out
+# the local concat mode in each source file. It might sound like it will save
+# you a lot of typing by not having to copy and paste a `! local concat` option,
+# but it will likely lead to misbehavior in your RiveScript personality when you
+# give it to somebody else to use in their bot.
 #
 # ## Custom Error Messages
 #
@@ -177,7 +223,9 @@ class RiveScript
     @_global   = {} # 'global' variables
     @_var      = {} # 'bot' variables
     @_sub      = {} # 'sub' substitutions
+    @_submax   = 1  # 'submax' max words in sub object
     @_person   = {} # 'person' substitutions
+    @_personmax= 1  # 'personmax' max words in person object
     @_array    = {} # 'array' variables
     @_users    = {} # 'user' variables
     @_freeze   = {} # frozen 'user' variables
@@ -244,11 +292,14 @@ class RiveScript
   # running in a web browser or from node.
   ##
   runtime: ->
-    # In Node, there is no window, and module is a thing.
-    if typeof(window) is "undefined" and typeof(module) is "object"
-      @_node.fs = require "fs"
-      return "node"
-    return "web"
+    # Webpack and browserify define `process.browser` so this is the best place
+    # to check if we're running in a web environment.
+    if process.browser
+      return "web"
+
+    # Import the Node filesystem library.
+    @_node.fs = require "fs"
+    return "node"
 
   ##
   # private void say (string message)
@@ -464,6 +515,8 @@ class RiveScript
       continue unless ast.begin.hasOwnProperty type
       internal = "_#{type}" # so "global" maps to this._global
       for name, value of vars
+        if type=='sub' || type=='person'
+          @[internal+"max"] = Math.max(@[internal+"max"], name.split(" ").length);
         continue unless vars.hasOwnProperty name
         if value is "<undef>"
           delete @[internal][name]
@@ -707,6 +760,7 @@ class RiveScript
     if value is undefined
       delete @_sub[name]
     else
+      @_submax = Math.max(name.split(' ').length, @_submax)
       @_sub[name] = value
 
   ##
@@ -719,6 +773,7 @@ class RiveScript
     if value is undefined
       delete @_person[name]
     else
+      @_personmax = Math.max(name.split(' ').length, @_personmax)
       @_person[name] = value
 
   ##
@@ -882,6 +937,19 @@ class RiveScript
   initialMatch: (user) ->
     if @_users[user]?
       return @_users[user].__initialmatch__
+    return undefined
+
+  ##
+  # object lastTrigger (string user)
+  #
+  # Retrieve the triggers that have been matched for the last reply. This
+  # will contain all matched trigger with every subsequent redirects.
+  #
+  # This value is reset on each `reply()` or `replyAsync()` call.
+  ##
+  lastTriggers: (user) ->
+    if @_users[user]?
+      return @_users[user].__last_triggers__
     return undefined
 
   ##
