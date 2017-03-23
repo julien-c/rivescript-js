@@ -52,6 +52,7 @@ class Parser
   #       "triggers": [ // array of triggers
   #         {
   #           "trigger": "hello bot",
+  #           "triggerCondition": "", // a js trigger condition
   #           "reply": [], // array of replies
   #           "condition": [], // array of conditions
   #           "redirect": "",  // @ redirect command
@@ -409,11 +410,21 @@ class Parser
           @initTopic ast.topics, topic
           curTrig =
             trigger: line
+            triggerCondition: null
             reply: []
             condition: []
             redirect: null
             previous: isThat
           ast.topics[topic].triggers.push curTrig
+
+        when "~"
+          # ~ Trigger condition
+          if curTrig is null
+            @warn "TriggerCondition found before trigger", filename, lineno
+            continue
+
+          @say "\tTriggerCondition: #{line}"
+          curTrig.triggerCondition = line
 
         when "-"
           # - Response

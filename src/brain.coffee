@@ -412,6 +412,23 @@ class Brain
               for i in [1..match.length]
                 stars.push match[i]
 
+        # We check if there is a trigger condition
+        if isMatch and trig[1].triggerCondition isnt null
+          condition = trig[1].triggerCondition
+          @say "Checking trigger condition #{condition}"
+
+          # Then we process all tags (forJS)
+          condition = @processTags(user, msg, condition, stars, thatstars, step, scope, true)
+          condition = @processCallTags(condition, scope, false)
+          @say "#{condition}"
+          try isMatch = eval(condition)
+          catch e
+            @say "Error while evaluating triggerCondition: #{e}"
+            isMatch = false
+          @say "Returned: #{isMatch}"
+          if !isMatch
+            stars = []
+
         # A match somehow?
         if isMatch
           @say "Found a match!"
@@ -759,7 +776,7 @@ class Brain
   # All the tags get processed here except for `<call>` tags which have
   # a separate subroutine (refer to `processCallTags` for more info)
   ##
-  processTags: (user, msg, reply, st, bst, step, scope) ->
+  processTags: (user, msg, reply, st, bst, step, scope, forJS) ->
     # Prepare the stars and botstars.
     stars = [""]
     stars.push.apply(stars, st)
@@ -942,6 +959,8 @@ class Brain
             @master.setUservar(user, name, result)
       else if tag is "get"
         insert = @master.getUservar(user, data)
+        if forJS and insert != "undefined"
+          insert = "\"#{insert}\""
       else
         # Unrecognized tag, preserve it
         insert = "\x00#{match}\x01"
