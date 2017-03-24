@@ -401,7 +401,7 @@ class Brain
             isMatch = true
         else
           # Non-atomic triggers always need the regexp.
-          match = msg.match(new RegExp("^#{regexp}$"))
+          match = msg.match(new RegExp("^#{regexp}$"), "i")
           if match
             # The regexp matched!
             isMatch = true
@@ -415,16 +415,19 @@ class Brain
         # We check if there is a trigger condition
         if isMatch and trig[1].triggerCondition isnt null
           condition = trig[1].triggerCondition
-          @say "Checking trigger condition #{condition}"
+          @say "Checking trigger condition"
 
           # Then we process all tags (forJS)
+          @say "Raw condition: #{condition}"
           condition = @processTags(user, msg, condition, stars, thatstars, step, scope, true)
           condition = @processCallTags(condition, scope, false)
-          @say "#{condition}"
+          @say "Processed condition: #{condition}"
+
           try isMatch = eval(condition)
           catch e
             @say "Error while evaluating triggerCondition: #{e}"
             isMatch = false
+
           @say "Returned: #{isMatch}"
           if !isMatch
             stars = []
@@ -754,7 +757,7 @@ class Brain
         for i in [1..9]
           if regexp.indexOf("<#{type}#{i}>") > -1
             regexp = regexp.replace(new RegExp("<#{type}#{i}>", "g"),
-              @master._users[user].__history__[type][i])
+              @formatMessage(@master._users[user].__history__[type][i-1]))
 
     # Recover escaped Unicode symbols.
     if @utf8 and regexp.indexOf("\\u") > -1
@@ -832,10 +835,10 @@ class Brain
     for i in [1..9]
       if reply.indexOf("<input#{i}>") > -1
         reply = reply.replace(new RegExp("<input#{i}>", "ig"),
-          @master._users[user].__history__.input[i])
+          @master._users[user].__history__.input[i-1])
       if reply.indexOf("<reply#{i}>") > -1
         reply = reply.replace(new RegExp("<reply#{i}>", "ig"),
-          @master._users[user].__history__.reply[i])
+          @master._users[user].__history__.reply[i-1])
 
     # <id> and escape codes
     reply = reply.replace(/<id>/ig, user)
