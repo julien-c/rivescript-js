@@ -1,5 +1,5 @@
 
-declare module "rivescript" {
+declare module "rivescript-hf" {
 	
 	interface RivescriptOptions {
 		utf8?: boolean;
